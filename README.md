@@ -8,7 +8,7 @@ It does not add any graph nodes. On load it wraps `PromptServer.send_sync` and s
 
 ```bash
 cd /path/to/ComfyUI/custom_nodes
-git clone <this-repo> comfyui-omarchy-status
+git clone https://github.com/sshbrian/comfyui-omarchy-status.git
 ```
 
 Restart ComfyUI. The file appears at:
