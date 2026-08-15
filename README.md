@@ -1,6 +1,6 @@
 # comfyui-omarchy-status
 
-A ComfyUI custom node package that writes generation status to a JSON file so the sibling Omarchy bar plugin (`omarchy-comfyui`) can show Idle, a progress bar, and it/s.
+A ComfyUI custom node package that writes generation status to a JSON file so the sibling Omarchy bar plugin (`omarchy-comfyui-status-plugin`) can show Idle, a progress bar, and it/s.
 
 It does not add any graph nodes. On load it wraps `PromptServer.send_sync` and snapshots `status`, `progress`, and `executing` events.
 
