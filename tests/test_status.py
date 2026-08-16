@@ -390,6 +390,12 @@ class SchemaTwoTests(unittest.TestCase):
         self.assertEqual(derive_phase(snap), "loading")
         snap["node_type"] = "SaveImage"
         self.assertEqual(derive_phase(snap), "saving")
+        snap["node_type"] = "CLIPTextEncode"
+        self.assertEqual(derive_phase(snap), "working")
+        snap["node_type"] = "CLIPLoader"
+        self.assertEqual(derive_phase(snap), "loading")
+        snap["node_type"] = "DualCLIPLoader"
+        self.assertEqual(derive_phase(snap), "loading")
 
     def test_session_file_resets_on_new_day(self):
         with tempfile.TemporaryDirectory() as tmp:

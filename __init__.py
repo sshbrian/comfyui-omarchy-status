@@ -78,9 +78,8 @@ def _patch():
         holder["server"] = self
         if isinstance(event, str):
             try:
-                live = status.live_from_server(self)
                 with lock:
-                    nxt = status.apply_event(snap, event, data, live=live)
+                    nxt = status.apply_event(snap, event, data)
                     if nxt is not None:
                         prev_session = snap.get("session")
                         snap = nxt

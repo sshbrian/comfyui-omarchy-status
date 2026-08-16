@@ -25,8 +25,9 @@ _LOADER_MARKERS = (
     "checkpoint",
     "unet",
     "lora",
-    "clip",
+    "cliploader",
     "dualcliploader",
+    "clipvisionloader",
 )
 _DECODE_MARKERS = ("vaedecode", "vae decode", "decode")
 _SAVE_MARKERS = ("saveimage", "save_image", "previewimage", "save video", "vhs_videocombine")
