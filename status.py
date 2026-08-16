@@ -6,6 +6,8 @@ from pathlib import Path
 SCHEMA = 2
 STEP_TIMES_MAX = 48
 ERROR_MAX_LEN = 200
+MIN_STEP_DT = 0.02
+MAX_STEP_DT = 600
 
 HANDLED_EVENTS = frozenset(
     {
@@ -95,6 +97,7 @@ def empty_snapshot(now=None) -> dict:
         "last_event": None,
         "step_times": [],
         "step_at": None,
+        "step_series": None,
         "job_started_at": None,
         "facts": empty_facts(),
         "last_job": None,
@@ -346,6 +349,8 @@ def _copy_snap(snap, now=None) -> dict:
     out.update(snap)
     out["schema"] = SCHEMA
     out["step_times"] = list(out.get("step_times") or [])
+    series = out.get("step_series")
+    out["step_series"] = dict(series) if isinstance(series, dict) else None
     facts = empty_facts()
     if isinstance(out.get("facts"), dict):
         facts.update(out["facts"])
@@ -371,6 +376,7 @@ def _clear_current(out) -> None:
     out["node_title"] = None
     out["step_times"] = []
     out["step_at"] = None
+    out["step_series"] = None
     out["job_started_at"] = None
     out["facts"] = empty_facts()
     out["queue_running"] = 0
@@ -415,26 +421,62 @@ def _ensure_job(out, prev, prompt_id, now) -> None:
         out["prompt_id"] = prompt_id
 
 
+def _series_from_payload(payload) -> dict:
+    return {
+        "prompt_id": payload.get("prompt_id"),
+        "node": payload.get("node"),
+        "max": _number(payload.get("max"), 0),
+    }
+
+
+def _series_key(series) -> tuple:
+    if not isinstance(series, dict):
+        return None
+    return (series.get("prompt_id"), series.get("node"), _number(series.get("max"), 0))
+
+
 def _record_step(out, prev, payload, now) -> None:
+    prev_series = prev.get("step_series")
     prev_value = _number(prev.get("value"), 0)
+    series_value = _number((prev_series or {}).get("value"), prev_value)
     value = _number(payload.get("value"), 0)
-    same = (
-        prev.get("prompt_id") == payload.get("prompt_id")
-        and prev.get("node") == payload.get("node")
-        and _number(prev.get("max"), 0) == _number(payload.get("max"), 0)
-    )
+    key = _series_from_payload(payload)
+    prev_key = _series_key(prev_series)
+    this_key = _series_key(key)
     times = list(prev.get("step_times") or [])
-    if same and value > prev_value:
+
+    # Inner/nested progress bars change max on the same node and would wipe the
+    # sampler sparkline if we treated them as a new series.
+    if prev_key is not None and this_key != prev_key and len(times) >= 2:
+        looks_like_new_sampler = _number(key.get("max"), 0) >= 2 and value <= 2
+        if not looks_like_new_sampler:
+            out["step_times"] = times
+            out["step_series"] = dict(prev_series)
+            out["step_at"] = prev.get("step_at")
+            return
+
+    same = prev_key is not None and this_key == prev_key
+    if not same:
+        times = []
+        if prev.get("last_event") == "executing":
+            started = prev.get("step_at")
+            if started is None:
+                started = prev.get("updated_at")
+            dt = now - _number(started, now) if started is not None else 0
+            if value >= 1 and MIN_STEP_DT < dt < MAX_STEP_DT:
+                times.append(round(dt, 4))
+    elif value > series_value:
         started = prev.get("step_at")
         if started is None:
             started = prev.get("updated_at")
         dt = now - _number(started, now)
-        if 0 < dt < 600:
+        if MIN_STEP_DT < dt < MAX_STEP_DT:
             times.append(round(dt, 4))
             times = times[-STEP_TIMES_MAX:]
-    elif not same:
-        times = []
+    key = dict(key)
+    key["value"] = value
     out["step_times"] = times
+    out["step_series"] = key
     out["step_at"] = now
 
 
@@ -613,13 +655,12 @@ def apply_event(snap, event, data, now=None, live=None):
             _ensure_job(out, prev, prompt_id, now)
             out["prompt_id"] = prompt_id
         if node != out.get("node"):
-            out["value"] = 0
-            out["max"] = 0
+            # Keep last sampler value/max/step_times so the dashboard graph
+            # survives VAE decode and other post-sample nodes. A later
+            # progress event starts a new series when appropriate.
             out["node"] = node
             out["node_type"] = None
             out["node_title"] = None
-            out["step_times"] = []
-            out["step_at"] = None
         out["state"] = "running"
         out["last_event"] = "executing"
         return _finalize(out, live)
@@ -636,6 +677,7 @@ def apply_event(snap, event, data, now=None, live=None):
         out["node_title"] = None
         out["step_times"] = []
         out["step_at"] = None
+        out["step_series"] = None
         out["last_event"] = "execution_start"
         return _finalize(out, live)
 
@@ -649,6 +691,7 @@ def apply_event(snap, event, data, now=None, live=None):
         out["node_title"] = None
         out["step_times"] = []
         out["step_at"] = None
+        out["step_series"] = None
         out["facts"] = empty_facts()
         return _finalize(out, live)
 

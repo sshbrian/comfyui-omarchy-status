@@ -92,24 +92,37 @@ class ApplyEventTests(unittest.TestCase):
         self.assertEqual(snap["max"], 20)
         self.assertEqual(snap["queue_remaining"], 2)
 
-    def test_executing_new_node_clears_sampler(self):
+    def test_executing_new_node_keeps_sampler_curve(self):
         snap = apply_event(
             empty_snapshot(),
             "progress",
-            {"value": 20, "max": 20, "prompt_id": "p", "node": "3"},
-            now=1,
+            {"value": 1, "max": 20, "prompt_id": "p", "node": "3"},
+            now=10,
+        )
+        snap = apply_event(
+            snap,
+            "progress",
+            {"value": 2, "max": 20, "prompt_id": "p", "node": "3"},
+            now=13,
+        )
+        snap = apply_event(
+            snap,
+            "progress",
+            {"value": 3, "max": 20, "prompt_id": "p", "node": "3"},
+            now=15.5,
         )
         snap = apply_event(
             snap,
             "executing",
             {"node": "8", "prompt_id": "p"},
-            now=2,
+            now=16,
         )
         self.assertEqual(snap["state"], "running")
         self.assertEqual(snap["last_event"], "executing")
-        self.assertEqual(snap["value"], 0)
-        self.assertEqual(snap["max"], 0)
+        self.assertEqual(snap["value"], 3)
+        self.assertEqual(snap["max"], 20)
         self.assertEqual(snap["node"], "8")
+        self.assertEqual(snap["step_times"], [3.0, 2.5])
 
     def test_executing_none_does_not_force_idle(self):
         snap = apply_event(
@@ -210,6 +223,28 @@ FLUX_PROMPT = {
 
 
 class SchemaTwoTests(unittest.TestCase):
+    def test_first_progress_after_executing_records_open_interval(self):
+        snap = apply_event(
+            empty_snapshot(),
+            "executing",
+            {"node": "3", "prompt_id": "p"},
+            now=10,
+        )
+        snap = apply_event(
+            snap,
+            "progress",
+            {"value": 1, "max": 20, "prompt_id": "p", "node": "3"},
+            now=40,
+        )
+        self.assertEqual(snap["step_times"], [30.0])
+        snap = apply_event(
+            snap,
+            "progress",
+            {"value": 2, "max": 20, "prompt_id": "p", "node": "3"},
+            now=70,
+        )
+        self.assertEqual(snap["step_times"], [30.0, 30.0])
+
     def test_progress_records_step_times(self):
         snap = apply_event(
             empty_snapshot(),
@@ -231,6 +266,45 @@ class SchemaTwoTests(unittest.TestCase):
         )
         self.assertEqual(snap["step_times"], [3.0, 2.5])
         self.assertEqual(snap["phase"], "sampling")
+
+    def test_nested_progress_keeps_sampler_series(self):
+        snap = apply_event(
+            empty_snapshot(),
+            "progress",
+            {"value": 1, "max": 8, "prompt_id": "p", "node": "3"},
+            now=1,
+        )
+        snap = apply_event(
+            snap,
+            "progress",
+            {"value": 2, "max": 8, "prompt_id": "p", "node": "3"},
+            now=3,
+        )
+        snap = apply_event(
+            snap,
+            "progress",
+            {"value": 3, "max": 8, "prompt_id": "p", "node": "3"},
+            now=5,
+        )
+        self.assertEqual(snap["step_times"], [2.0, 2.0])
+        snap = apply_event(
+            snap,
+            "progress",
+            {"value": 50, "max": 100, "prompt_id": "p", "node": "3"},
+            now=5.2,
+        )
+        self.assertEqual(snap["step_times"], [2.0, 2.0])
+        self.assertEqual(snap["value"], 50)
+        self.assertEqual(snap["max"], 100)
+        snap = apply_event(
+            snap,
+            "progress",
+            {"value": 4, "max": 8, "prompt_id": "p", "node": "3"},
+            now=7,
+        )
+        self.assertEqual(snap["step_times"], [2.0, 2.0, 2.0])
+        self.assertEqual(snap["value"], 4)
+        self.assertEqual(snap["max"], 8)
 
     def test_new_sampler_resets_step_times(self):
         snap = apply_event(
