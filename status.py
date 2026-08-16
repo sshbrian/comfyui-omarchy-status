@@ -402,6 +402,7 @@ def _finish_job(out, prev, now, status, error=None) -> None:
         session["interrupts"] = session.get("interrupts", 0) + 1
     out["session"] = session
     out["job_started_at"] = None
+    out["prompt_id"] = None
 
 
 def _ensure_job(out, prev, prompt_id, now) -> None:
@@ -603,12 +604,14 @@ def apply_event(snap, event, data, now=None, live=None):
     if event == "executing":
         node = payload.get("node")
         prompt_id = payload.get("prompt_id")
+        if node is None:
+            # Comfy sends this after the node list (and often after
+            # execution_success). It is not a new job.
+            out["last_event"] = "executing"
+            return _finalize(out, live)
         if prompt_id is not None:
             _ensure_job(out, prev, prompt_id, now)
             out["prompt_id"] = prompt_id
-        if node is None:
-            out["last_event"] = "executing"
-            return _finalize(out, live)
         if node != out.get("node"):
             out["value"] = 0
             out["max"] = 0

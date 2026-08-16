@@ -289,6 +289,76 @@ class SchemaTwoTests(unittest.TestCase):
         self.assertEqual(idle["last_job"]["status"], "ok")
         self.assertEqual(idle["state"], "idle")
 
+    def test_trailing_executing_none_does_not_restart_job(self):
+        snap = apply_event(
+            empty_snapshot(now=100),
+            "execution_start",
+            {"prompt_id": "p"},
+            now=100,
+        )
+        snap = apply_event(
+            snap,
+            "progress",
+            {"value": 4, "max": 20, "prompt_id": "p", "node": "3"},
+            now=110,
+        )
+        snap = apply_event(snap, "execution_success", {"prompt_id": "p"}, now=148)
+        snap = apply_event(
+            snap,
+            "status",
+            {"status": {"exec_info": {"queue_remaining": 0}}},
+            now=149,
+        )
+        trailing = apply_event(
+            snap,
+            "executing",
+            {"node": None, "prompt_id": "p"},
+            now=150,
+        )
+        self.assertEqual(trailing["session"]["gens"], 1)
+        self.assertIsNone(trailing["job_started_at"])
+        self.assertIsNone(trailing["prompt_id"])
+        self.assertAlmostEqual(trailing["session"]["gpu_sec"], 48)
+
+        nxt = apply_event(trailing, "execution_start", {"prompt_id": "q"}, now=400)
+        self.assertEqual(nxt["session"]["gens"], 1)
+        self.assertEqual(nxt["job_started_at"], 400)
+        done = apply_event(nxt, "execution_success", {"prompt_id": "q"}, now=410)
+        self.assertEqual(done["session"]["gens"], 2)
+        self.assertAlmostEqual(done["session"]["gpu_sec"], 58)
+
+    def test_executing_none_after_success_with_queue_left(self):
+        snap = apply_event(
+            empty_snapshot(now=1),
+            "execution_start",
+            {"prompt_id": "p"},
+            now=1,
+        )
+        snap = apply_event(
+            snap,
+            "progress",
+            {"value": 2, "max": 10, "prompt_id": "p", "node": "3"},
+            now=2,
+        )
+        snap = apply_event(snap, "execution_success", {"prompt_id": "p"}, now=11)
+        snap = apply_event(
+            snap,
+            "status",
+            {"status": {"exec_info": {"queue_remaining": 1}}},
+            now=12,
+        )
+        trailing = apply_event(
+            snap,
+            "executing",
+            {"node": None, "prompt_id": "p"},
+            now=13,
+        )
+        self.assertEqual(trailing["session"]["gens"], 1)
+        self.assertIsNone(trailing["job_started_at"])
+        nxt = apply_event(trailing, "execution_start", {"prompt_id": "q"}, now=14)
+        self.assertEqual(nxt["session"]["gens"], 1)
+        self.assertEqual(nxt["prompt_id"], "q")
+
     def test_status_idle_without_success_still_counts(self):
         snap = apply_event(
             empty_snapshot(now=1),
