@@ -11,6 +11,7 @@ from status import (  # noqa: E402
     apply_event,
     derive_phase,
     empty_snapshot,
+    enrich_live,
     extract_facts,
     write_snapshot,
     write_session,
@@ -38,6 +39,8 @@ class ApplyEventTests(unittest.TestCase):
         self.assertIsNone(idle["prompt_id"])
         self.assertIsNone(idle["node"])
         self.assertEqual(idle["queue_remaining"], 0)
+        self.assertEqual(idle["queue_running"], 0)
+        self.assertEqual(idle["queue_pending"], 0)
 
     def test_status_then_progress_then_idle(self):
         snap = apply_event(
@@ -376,6 +379,39 @@ class SchemaTwoTests(unittest.TestCase):
         self.assertEqual(snap["queue_pending"], 1)
         self.assertEqual(snap["vram"]["total"], 24)
         self.assertEqual(snap["phase"], "sampling")
+
+    def test_idle_zeros_queue_split_and_ignores_stale_live(self):
+        live = {
+            "running": [(0, "p", SAMPLE_PROMPT, {}, [])],
+            "pending": [(1, "q", {}, {}, [])],
+            "vram": {"name": "cuda", "used": 10, "total": 24},
+        }
+        snap = apply_event(
+            empty_snapshot(),
+            "progress",
+            {"value": 2, "max": 20, "prompt_id": "p", "node": "3"},
+            now=1,
+            live=live,
+        )
+        self.assertEqual(snap["queue_running"], 1)
+        self.assertEqual(snap["queue_pending"], 1)
+
+        idle = apply_event(
+            snap,
+            "status",
+            {"status": {"exec_info": {"queue_remaining": 0}}},
+            now=2,
+        )
+        self.assertEqual(idle["state"], "idle")
+        self.assertEqual(idle["queue_running"], 0)
+        self.assertEqual(idle["queue_pending"], 0)
+        self.assertIsNone(idle["facts"]["checkpoint"])
+
+        restored = enrich_live(idle, live)
+        self.assertEqual(restored["queue_running"], 0)
+        self.assertEqual(restored["queue_pending"], 0)
+        self.assertIsNone(restored["facts"]["checkpoint"])
+        self.assertEqual(restored["vram"]["total"], 24)
 
     def test_phase_from_node_type(self):
         snap = apply_event(

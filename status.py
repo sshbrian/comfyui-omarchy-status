@@ -373,6 +373,8 @@ def _clear_current(out) -> None:
     out["step_at"] = None
     out["job_started_at"] = None
     out["facts"] = empty_facts()
+    out["queue_running"] = 0
+    out["queue_pending"] = 0
 
 
 def _finish_job(out, prev, now, status, error=None) -> None:
@@ -509,9 +511,14 @@ def enrich_live(snap, live) -> dict:
     if not isinstance(live, dict):
         return out
 
+    idle = out.get("state") != "running"
     running = live.get("running") or []
     pending = live.get("pending") or []
-    if isinstance(running, (list, tuple)) or isinstance(pending, (list, tuple)):
+
+    if idle:
+        out["queue_running"] = 0
+        out["queue_pending"] = 0
+    elif isinstance(running, (list, tuple)) or isinstance(pending, (list, tuple)):
         run_n = len(running) if isinstance(running, (list, tuple)) else 0
         pend_n = len(pending) if isinstance(pending, (list, tuple)) else 0
         out["queue_running"] = run_n
@@ -524,6 +531,9 @@ def enrich_live(snap, live) -> dict:
         merged = empty_vram()
         merged.update(vram)
         out["vram"] = merged
+
+    if idle:
+        return out
 
     item = find_queue_item(running, pending, out.get("prompt_id"))
     prompt = _queue_item_prompt(item)
