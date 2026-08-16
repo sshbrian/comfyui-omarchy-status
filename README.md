@@ -19,7 +19,7 @@ ${XDG_STATE_HOME:-~/.local/state}/omarchy/comfyui-status.json
 
 Today's session totals are also persisted at `comfyui-session.json` next to that file so a Comfy restart does not wipe the day.
 
-This package is required for the sampler bar, it/s, ETA, sparkline, facts, last job, and session totals. Without it the Omarchy widget can still show Offline / Idle / Working… from `GET /prompt`.
+This package is required for the sampler bar, it/s, ETA, sparkline, facts, last job, and session totals on the click-to-open dashboard. Without it the Omarchy widget can still show Offline / Idle / Working… from `GET /prompt`.
 
 ## Snapshot
 
@@ -55,7 +55,7 @@ Schema 2:
   "last_job": null,
   "vram": { "name": null, "used": 0, "total": 0 },
   "session": {
-    "day": "2026-08-15",
+    "day": "2026-08-16",
     "gens": 0,
     "failures": 0,
     "interrupts": 0,
