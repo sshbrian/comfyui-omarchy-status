@@ -63,7 +63,7 @@ def _patch():
     session_path = status.default_session_path()
     snap = status.empty_snapshot()
     snap["session"] = status.load_session(session_path)
-    holder = {"server": None}
+    holder = {"server": None, "snap": snap}
 
     def persist(nxt, write_session=False):
         status.write_snapshot(path, nxt)
@@ -74,16 +74,16 @@ def _patch():
                 _log.exception("failed to persist Omarchy session totals")
 
     def send_sync(self, event, data, sid=None):
-        nonlocal snap
         holder["server"] = self
         if isinstance(event, str):
             try:
                 with lock:
-                    nxt = status.apply_event(snap, event, data)
+                    current = holder["snap"]
+                    nxt = status.apply_event(current, event, data)
                     if nxt is not None:
-                        prev_session = snap.get("session")
-                        snap = nxt
-                        persist(snap, write_session=nxt.get("session") != prev_session)
+                        prev_session = current.get("session")
+                        holder["snap"] = nxt
+                        persist(nxt, write_session=nxt.get("session") != prev_session)
             except Exception:
                 _log.exception("failed to update Omarchy status file")
         return orig(self, event, data, sid)
@@ -99,17 +99,18 @@ def _patch():
             try:
                 live = status.live_from_server(server)
                 with lock:
-                    nxt = status.refresh_live(snap, live)
-                    if _visible(nxt) == _visible(snap):
+                    current = holder["snap"]
+                    nxt = status.refresh_live(current, live)
+                    if _visible(nxt) == _visible(current):
                         continue
-                    snap = nxt
-                    persist(snap)
+                    holder["snap"] = nxt
+                    persist(nxt)
             except Exception:
                 _log.exception("failed to refresh Omarchy status file")
 
     PromptServer.send_sync = send_sync
     try:
-        persist(snap)
+        persist(holder["snap"])
     except Exception:
         _log.exception("failed to write initial Omarchy status file")
     else:
